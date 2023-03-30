@@ -33,10 +33,15 @@ const (
 	CategoryOther   TaskCategory = "other"
 )
 
+var (
+	db  *gorm.DB
+	err error
+)
+
 func main() {
 	// init database
 	dataSourceName := "host=localhost user=postgres password=postgres port=5432 sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
+	db, err = gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 		Logger:                                   logger.Default.LogMode(logger.Info),
 	})
