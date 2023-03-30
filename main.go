@@ -136,8 +136,6 @@ func main() {
 	}
 
 	// enable debug logging
-
-	// declare models
 	err = db.AutoMigrate(&CleaningTask{})
 	if err != nil {
 		panic(err)
@@ -146,8 +144,11 @@ func main() {
 	e := echo.New()
 
 	cleaningTasksPath := "/api/cleaning-tasks"
+
 	e.GET(cleaningTasksPath, getCleaningTasks)
 	e.POST(cleaningTasksPath, createCleaningTask)
+	// I dislike here that the handler methods has no explicit knowledge about the path (:id)
+	// defining the path and handler together seems to be more explicit
 	e.GET(cleaningTasksPath+"/:id", getCleaningTaskById)
 	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById)
 	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById)
