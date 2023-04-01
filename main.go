@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/labstack/echo/v4"
-	"gorm.io/driver/postgres"
+	"github.com/timotheus90/go-playground/database"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"net/http"
 	"strconv"
 	"time"
@@ -34,8 +33,9 @@ const (
 )
 
 var (
-	db  *gorm.DB
-	err error
+	db                *database.Database
+	err               error
+	cleaningTasksPath = "/api/cleaning-tasks"
 )
 
 func getCleaningTasks(c echo.Context) error {
@@ -127,10 +127,7 @@ func deleteCleaningTaskById(c echo.Context) error {
 func main() {
 	// init database
 	dataSourceName := "host=localhost user=postgres password=postgres port=5432 sslmode=disable"
-	db, err = gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
-		DisableForeignKeyConstraintWhenMigrating: true,
-		Logger:                                   logger.Default.LogMode(logger.Info),
-	})
+	db, err = database.NewDatabase(dataSourceName)
 	if err != nil {
 		panic(err)
 	}
