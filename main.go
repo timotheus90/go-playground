@@ -5,31 +5,10 @@ import (
 	"errors"
 	"github.com/labstack/echo/v4"
 	"github.com/timotheus90/go-playground/database"
+	"github.com/timotheus90/go-playground/models"
 	"gorm.io/gorm"
 	"net/http"
 	"strconv"
-	"time"
-)
-
-type CleaningTask struct {
-	ID          uint           `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time      `json:"-"`
-	UpdatedAt   time.Time      `json:"-"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	Description string         `json:"description"`
-	DueDate     time.Time      `json:"dueDate"`
-	Assignee    string         `json:"assignee"`
-	Completed   bool           `json:"completed"`
-	Category    TaskCategory   `json:"category"`
-}
-
-type TaskCategory string
-
-const (
-	CategoryKitchen TaskCategory = "kitchen"
-	CategoryBaths   TaskCategory = "baths"
-	CategoryFloors  TaskCategory = "floors"
-	CategoryOther   TaskCategory = "other"
 )
 
 var (
@@ -39,8 +18,8 @@ var (
 )
 
 func getCleaningTasks(c echo.Context) error {
-	cleaningTasks := []CleaningTask{{}}
-	result := db.Model(&CleaningTask{}).Find(&cleaningTasks)
+	cleaningTasks := []models.CleaningTask{{}}
+	result := db.Model(&models.CleaningTask{}).Find(&cleaningTasks)
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
@@ -48,7 +27,7 @@ func getCleaningTasks(c echo.Context) error {
 }
 
 func createCleaningTask(c echo.Context) error {
-	cleaningTask := CleaningTask{}
+	cleaningTask := models.CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
@@ -66,8 +45,8 @@ func createCleaningTask(c echo.Context) error {
 
 func getCleaningTaskById(c echo.Context) error {
 	id := c.Param("id")
-	cleaningTask := CleaningTask{}
-	result := db.Model(CleaningTask{}).First(&cleaningTask, id)
+	cleaningTask := models.CleaningTask{}
+	result := db.Model(models.CleaningTask{}).First(&cleaningTask, id)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound)
@@ -80,14 +59,14 @@ func getCleaningTaskById(c echo.Context) error {
 }
 
 func updateCleaningTaskById(c echo.Context) error {
-	cleaningTask := CleaningTask{}
+	cleaningTask := models.CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
 	id, _ := strconv.Atoi(c.Param("id"))
-	result := db.First(&CleaningTask{}, id)
+	result := db.First(&models.CleaningTask{}, id)
 	if result.RowsAffected == 0 {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -108,7 +87,7 @@ func updateCleaningTaskById(c echo.Context) error {
 
 func deleteCleaningTaskById(c echo.Context) error {
 	id := c.Param("id")
-	result := db.Find(&CleaningTask{}, id)
+	result := db.Find(&models.CleaningTask{}, id)
 	if result.RowsAffected == 0 {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -116,7 +95,7 @@ func deleteCleaningTaskById(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
 
-	result = db.Delete(&CleaningTask{}, id)
+	result = db.Delete(&models.CleaningTask{}, id)
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
@@ -133,7 +112,7 @@ func main() {
 	}
 
 	// enable debug logging
-	err = db.AutoMigrate(&CleaningTask{})
+	err = db.AutoMigrate(&models.CleaningTask{})
 	if err != nil {
 		panic(err)
 	}
