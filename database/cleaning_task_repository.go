@@ -8,7 +8,7 @@ type CleaningTaskRepository struct {
 	DB *Database
 }
 
-func (repo *CleaningTaskRepository) Create(cleaningTask *models.CleaningTask) error {
+func (repo *CleaningTaskRepository) Save(cleaningTask *models.CleaningTask) error {
 	return repo.DB.Save(cleaningTask).Error
 }
 

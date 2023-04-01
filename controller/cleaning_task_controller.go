@@ -19,100 +19,93 @@ func SetupCleaningTaskEndpoints(e *echo.Echo, repository *database.CleaningTaskR
 	cleaningTaskRepository = repository
 
 	cleaningTasksPath := "/api/cleaning-tasks"
-	e.GET(cleaningTasksPath, getCleaningTasks)
-	e.POST(cleaningTasksPath, createCleaningTask)
-	// I dislike here that the handler methods has no explicit knowledge about the path (:id)
-	// defining the path and handler together seems to be more explicit
-	e.GET(cleaningTasksPath+"/:id", getCleaningTaskById)
-	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById)
-	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById)
-}
 
-func getCleaningTasks(c echo.Context) error {
-	cleaningTasks, err := cleaningTaskRepository.FindAll()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
-	return c.JSON(http.StatusOK, cleaningTasks)
-}
+	e.GET(cleaningTasksPath, func(c echo.Context) error {
+		cleaningTasks, err := cleaningTaskRepository.FindAll()
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		return c.JSON(http.StatusOK, cleaningTasks)
+	})
 
-func createCleaningTask(c echo.Context) error {
-	cleaningTask := models.CleaningTask{}
-	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+	e.POST(cleaningTasksPath, func(c echo.Context) error {
+		cleaningTask := models.CleaningTask{}
+		err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-	// create cleaning task in db
-	err = cleaningTaskRepository.Create(&cleaningTask)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+		// create cleaning task in db
+		err = cleaningTaskRepository.Save(&cleaningTask)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-	return c.JSON(http.StatusOK, cleaningTask)
-}
-
-func getCleaningTaskById(c echo.Context) error {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
-	}
-
-	cleaningTask, err := cleaningTaskRepository.FindById(uint(id))
-	if err == nil {
 		return c.JSON(http.StatusOK, cleaningTask)
-	}
+	})
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return echo.NewHTTPError(http.StatusNotFound)
-	}
+	e.GET(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
+		}
 
-	return echo.NewHTTPError(http.StatusInternalServerError, err)
-}
+		cleaningTask, err := cleaningTaskRepository.FindById(uint(id))
+		if err == nil {
+			return c.JSON(http.StatusOK, cleaningTask)
+		}
 
-func updateCleaningTaskById(c echo.Context) error {
-	cleaningTask := models.CleaningTask{}
-	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
-	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+	})
 
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
-	}
+	e.PUT(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		cleaningTask := models.CleaningTask{}
+		err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-	_, err = cleaningTaskRepository.FindById(uint(id))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, err)
-	}
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
+		}
 
-	// TODO: include id in request
-	cleaningTask.ID = uint(id)
-	err = cleaningTaskRepository.Create(&cleaningTask)
+		_, err = cleaningTaskRepository.FindById(uint(id))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusNotFound, err)
+		}
 
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+		// TODO: include id in request
+		cleaningTask.ID = uint(id)
+		err = cleaningTaskRepository.Save(&cleaningTask)
 
-	return c.JSON(http.StatusOK, cleaningTask)
-}
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-func deleteCleaningTaskById(c echo.Context) error {
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
-	}
+		return c.JSON(http.StatusOK, cleaningTask)
+	})
 
-	_, err = cleaningTaskRepository.FindById(uint(id))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusNotFound, err)
-	}
+	e.DELETE(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Unable to parse id!")
+		}
 
-	err = cleaningTaskRepository.Delete(uint(id))
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+		_, err = cleaningTaskRepository.FindById(uint(id))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusNotFound, err)
+		}
 
-	return c.NoContent(http.StatusNoContent)
+		err = cleaningTaskRepository.Delete(uint(id))
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+
+		return c.NoContent(http.StatusNoContent)
+	})
 }
