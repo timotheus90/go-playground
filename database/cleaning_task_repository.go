@@ -8,8 +8,8 @@ type CleaningTaskRepository struct {
 	DB *Database
 }
 
-func (repo *CleaningTaskRepository) Save(cleaningTask *models.CleaningTask) error {
-	return repo.DB.Create(cleaningTask).Error
+func (repo *CleaningTaskRepository) Create(cleaningTask *models.CleaningTask) error {
+	return repo.DB.Save(cleaningTask).Error
 }
 
 func (repo *CleaningTaskRepository) FindAll() ([]models.CleaningTask, error) {
