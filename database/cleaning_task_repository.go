@@ -13,7 +13,7 @@ func (repo *CleaningTaskRepository) Save(cleaningTask *models.CleaningTask) erro
 }
 
 func (repo *CleaningTaskRepository) FindAll() ([]models.CleaningTask, error) {
-	cleaningTasks := []models.CleaningTask{{}}
+	var cleaningTasks []models.CleaningTask
 	result := repo.DB.Model(&models.CleaningTask{}).Find(&cleaningTasks)
 	return cleaningTasks, result.Error
 }
