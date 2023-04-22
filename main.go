@@ -46,8 +46,10 @@ func WithDatabase(db *gorm.DB) Option {
 	}
 }
 
-func NewCleaningTaskRepo(options ...Option) *CleaningTaskRepo {
-	repo := &CleaningTaskRepo{}
+func NewCleaningTaskRepo(db *gorm.DB, options ...Option) *CleaningTaskRepo {
+	repo := &CleaningTaskRepo{
+		Db: db,
+	}
 	// iterate over all options and apply them to the Repo
 	for _, option := range options {
 		option(repo)
@@ -55,11 +57,42 @@ func NewCleaningTaskRepo(options ...Option) *CleaningTaskRepo {
 	return repo
 }
 
-func getCleaningTasks(c echo.Context, repo *CleaningTaskRepo) error {
+func (repo *CleaningTaskRepo) GetAll() ([]CleaningTask, error) {
 	cleaningTasks := []CleaningTask{{}}
 	result := repo.Db.Model(&CleaningTask{}).Find(&cleaningTasks)
 	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		return nil, result.Error
+	}
+	return cleaningTasks, nil
+}
+
+func (repo *CleaningTaskRepo) Create(task *CleaningTask) error {
+	return repo.Db.Create(task).Error
+}
+
+func (repo *CleaningTaskRepo) GetById(id uint) (*CleaningTask, error) {
+	task := &CleaningTask{}
+	result := repo.Db.Model(CleaningTask{}).First(task, id)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return task, nil
+}
+
+func (repo *CleaningTaskRepo) Update(task *CleaningTask) error {
+	return repo.Db.Save(task).Error
+}
+
+func (repo *CleaningTaskRepo) DeleteById(id uint) error {
+	return repo.Db.Delete(&CleaningTask{}, id).Error
+}
+
+// echo handlers
+
+func getCleaningTasks(c echo.Context, repo *CleaningTaskRepo) error {
+	cleaningTasks, err := repo.GetAll()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 	return c.JSON(http.StatusOK, cleaningTasks)
 }
@@ -71,26 +104,22 @@ func createCleaningTask(c echo.Context, repo *CleaningTaskRepo) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
-	// create cleaning task in db
-	result := repo.Db.Create(&cleaningTask)
-
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+	err = repo.Create(&cleaningTask)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
 	return c.JSON(http.StatusOK, cleaningTask)
 }
 
 func getCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
-	id := c.Param("id")
-	cleaningTask := CleaningTask{}
-	result := repo.Db.Model(CleaningTask{}).First(&cleaningTask, id)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	cleaningTask, err := repo.GetById(uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
-
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
 	return c.JSON(http.StatusOK, cleaningTask)
@@ -104,38 +133,22 @@ func updateCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
 	}
 
 	id, _ := strconv.Atoi(c.Param("id"))
-	result := repo.Db.First(&CleaningTask{}, id)
-	if result.RowsAffected == 0 {
-		return c.NoContent(http.StatusNotFound)
-	}
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
-
-	// save updated cleaning task in db
 	cleaningTask.ID = uint(id)
-	// TODO: include id in request
-	result = repo.Db.Save(&cleaningTask)
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+
+	err = repo.Update(&cleaningTask)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
 	return c.JSON(http.StatusOK, cleaningTask)
 }
 
 func deleteCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
-	id := c.Param("id")
-	result := repo.Db.Find(&CleaningTask{}, id)
-	if result.RowsAffected == 0 {
-		return c.NoContent(http.StatusNotFound)
-	}
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
+	id, _ := strconv.Atoi(c.Param("id"))
 
-	result = repo.Db.Delete(&CleaningTask{}, id)
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+	err := repo.DeleteById(uint(id))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -160,7 +173,7 @@ func main() {
 
 	e := echo.New()
 
-	repo := NewCleaningTaskRepo(WithDatabase(db))
+	repo := NewCleaningTaskRepo(db)
 
 	cleaningTasksPath := "/api/cleaning-tasks"
 
