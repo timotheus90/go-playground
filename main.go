@@ -39,10 +39,28 @@ type CleaningTaskRepo struct {
 
 type Option func(*CleaningTaskRepo)
 
-func WithDatabase(db *gorm.DB) Option {
-	// assign & setup db into repo
+func WithLogger(logger logger.Interface) Option {
 	return func(repo *CleaningTaskRepo) {
-		repo.Db = db
+		repo.Db.Config.Logger = logger
+	}
+}
+
+func WithDBConnectionOptions(connMaxLifetime time.Duration, maxOpenConns, maxIdleConns int) Option {
+	// DANGER: this might overwrite and conflict with other global DB settings
+	return func(repo *CleaningTaskRepo) {
+		sqlDB, _ := repo.Db.DB()
+		sqlDB.SetConnMaxLifetime(connMaxLifetime)
+		sqlDB.SetMaxOpenConns(maxOpenConns)
+		sqlDB.SetMaxIdleConns(maxIdleConns)
+	}
+}
+
+func WithAutoMigrations() Option {
+	return func(repo *CleaningTaskRepo) {
+		err := repo.Db.AutoMigrate(&CleaningTask{})
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -165,15 +183,12 @@ func main() {
 		panic(err)
 	}
 
-	// enable debug logging
-	err = db.AutoMigrate(&CleaningTask{})
-	if err != nil {
-		panic(err)
-	}
-
 	e := echo.New()
 
-	repo := NewCleaningTaskRepo(db)
+	repo := NewCleaningTaskRepo(db,
+		WithDBConnectionOptions(30*time.Minute, 10, 5),
+		WithAutoMigrations(),
+	)
 
 	cleaningTasksPath := "/api/cleaning-tasks"
 
