@@ -33,21 +33,38 @@ const (
 	CategoryOther   TaskCategory = "other"
 )
 
-var (
-	db  *gorm.DB
-	err error
-)
+type CleaningTaskRepo struct {
+	Db *gorm.DB
+}
 
-func getCleaningTasks(c echo.Context) error {
+type Option func(*CleaningTaskRepo)
+
+func WithDatabase(db *gorm.DB) Option {
+	// assign & setup db into repo
+	return func(repo *CleaningTaskRepo) {
+		repo.Db = db
+	}
+}
+
+func NewCleaningTaskRepo(options ...Option) *CleaningTaskRepo {
+	repo := &CleaningTaskRepo{}
+	// iterate over all options and apply them to the Repo
+	for _, option := range options {
+		option(repo)
+	}
+	return repo
+}
+
+func getCleaningTasks(c echo.Context, repo *CleaningTaskRepo) error {
 	cleaningTasks := []CleaningTask{{}}
-	result := db.Model(&CleaningTask{}).Find(&cleaningTasks)
+	result := repo.Db.Model(&CleaningTask{}).Find(&cleaningTasks)
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
 	return c.JSON(http.StatusOK, cleaningTasks)
 }
 
-func createCleaningTask(c echo.Context) error {
+func createCleaningTask(c echo.Context, repo *CleaningTaskRepo) error {
 	cleaningTask := CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
@@ -55,7 +72,7 @@ func createCleaningTask(c echo.Context) error {
 	}
 
 	// create cleaning task in db
-	result := db.Create(&cleaningTask)
+	result := repo.Db.Create(&cleaningTask)
 
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
@@ -64,10 +81,10 @@ func createCleaningTask(c echo.Context) error {
 	return c.JSON(http.StatusOK, cleaningTask)
 }
 
-func getCleaningTaskById(c echo.Context) error {
+func getCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
 	id := c.Param("id")
 	cleaningTask := CleaningTask{}
-	result := db.Model(CleaningTask{}).First(&cleaningTask, id)
+	result := repo.Db.Model(CleaningTask{}).First(&cleaningTask, id)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound)
@@ -79,7 +96,7 @@ func getCleaningTaskById(c echo.Context) error {
 	return c.JSON(http.StatusOK, cleaningTask)
 }
 
-func updateCleaningTaskById(c echo.Context) error {
+func updateCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
 	cleaningTask := CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
@@ -87,7 +104,7 @@ func updateCleaningTaskById(c echo.Context) error {
 	}
 
 	id, _ := strconv.Atoi(c.Param("id"))
-	result := db.First(&CleaningTask{}, id)
+	result := repo.Db.First(&CleaningTask{}, id)
 	if result.RowsAffected == 0 {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -98,7 +115,7 @@ func updateCleaningTaskById(c echo.Context) error {
 	// save updated cleaning task in db
 	cleaningTask.ID = uint(id)
 	// TODO: include id in request
-	result = db.Save(&cleaningTask)
+	result = repo.Db.Save(&cleaningTask)
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
@@ -106,9 +123,9 @@ func updateCleaningTaskById(c echo.Context) error {
 	return c.JSON(http.StatusOK, cleaningTask)
 }
 
-func deleteCleaningTaskById(c echo.Context) error {
+func deleteCleaningTaskById(c echo.Context, repo *CleaningTaskRepo) error {
 	id := c.Param("id")
-	result := db.Find(&CleaningTask{}, id)
+	result := repo.Db.Find(&CleaningTask{}, id)
 	if result.RowsAffected == 0 {
 		return c.NoContent(http.StatusNotFound)
 	}
@@ -116,7 +133,7 @@ func deleteCleaningTaskById(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
 
-	result = db.Delete(&CleaningTask{}, id)
+	result = repo.Db.Delete(&CleaningTask{}, id)
 	if result.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
 	}
@@ -127,7 +144,7 @@ func deleteCleaningTaskById(c echo.Context) error {
 func main() {
 	// init database
 	dataSourceName := "host=localhost user=postgres password=postgres port=5432 sslmode=disable"
-	db, err = gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 		Logger:                                   logger.Default.LogMode(logger.Info),
 	})
@@ -143,15 +160,25 @@ func main() {
 
 	e := echo.New()
 
+	repo := NewCleaningTaskRepo(WithDatabase(db))
+
 	cleaningTasksPath := "/api/cleaning-tasks"
 
-	e.GET(cleaningTasksPath, getCleaningTasks)
-	e.POST(cleaningTasksPath, createCleaningTask)
-	// I dislike here that the handler methods has no explicit knowledge about the path (:id)
-	// defining the path and handler together seems to be more explicit
-	e.GET(cleaningTasksPath+"/:id", getCleaningTaskById)
-	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById)
-	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById)
+	e.GET(cleaningTasksPath, func(c echo.Context) error {
+		return getCleaningTasks(c, repo)
+	})
+	e.POST(cleaningTasksPath, func(c echo.Context) error {
+		return createCleaningTask(c, repo)
+	})
+	e.GET(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		return getCleaningTaskById(c, repo)
+	})
+	e.PUT(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		return updateCleaningTaskById(c, repo)
+	})
+	e.DELETE(cleaningTasksPath+"/:id", func(c echo.Context) error {
+		return deleteCleaningTaskById(c, repo)
+	})
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
