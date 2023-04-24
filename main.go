@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/labstack/echo/v4"
+	. "github.com/timotheus90/go-playground/service-locator"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -33,109 +34,140 @@ const (
 	CategoryOther   TaskCategory = "other"
 )
 
-type ServiceLocator struct {
-	db   *gorm.DB
-	echo *echo.Echo
-}
-
-// similar to dependency container this holds references to dependencies and services of the app
-func NewServiceLocator(db *gorm.DB, echo *echo.Echo) *ServiceLocator {
-	return &ServiceLocator{db: db, echo: echo}
-}
-
-func (locator *ServiceLocator) GetDb() *gorm.DB {
-	return locator.db
-}
-
-func getCleaningTasks(c echo.Context) error {
-	db := c.Get("locator").(*ServiceLocator).GetDb()
-	cleaningTasks := []CleaningTask{{}}
-	result := db.Model(&CleaningTask{}).Find(&cleaningTasks)
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+func getCleaningTasks(serviceLocator *ServiceLocator) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbInstance, _, err := serviceLocator.GetWithType("db")
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		db, ok := dbInstance.(*gorm.DB)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		cleaningTasks := []CleaningTask{{}}
+		result := db.Model(&CleaningTask{}).Find(&cleaningTasks)
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
+		return c.JSON(http.StatusOK, cleaningTasks)
 	}
-	return c.JSON(http.StatusOK, cleaningTasks)
 }
 
-func createCleaningTask(c echo.Context) error {
-	db := c.Get("locator").(*ServiceLocator).GetDb()
-	cleaningTask := CleaningTask{}
-	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
-
-	// create cleaning task in db
-	result := db.Create(&cleaningTask)
-
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
-
-	return c.JSON(http.StatusOK, cleaningTask)
-}
-
-func getCleaningTaskById(c echo.Context) error {
-	db := c.Get("locator").(*ServiceLocator).GetDb()
-	id := c.Param("id")
-	cleaningTask := CleaningTask{}
-	result := db.Model(CleaningTask{}).First(&cleaningTask, id)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return echo.NewHTTPError(http.StatusNotFound)
+func createCleaningTask(serviceLocator *ServiceLocator) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbInstance, _, err := serviceLocator.GetWithType("db")
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		db, ok := dbInstance.(*gorm.DB)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		cleaningTask := CleaningTask{}
+		err = json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
 		}
 
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
+		// create cleaning task in db
+		result := db.Create(&cleaningTask)
 
-	return c.JSON(http.StatusOK, cleaningTask)
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
+
+		return c.JSON(http.StatusOK, cleaningTask)
+	}
 }
 
-func updateCleaningTaskById(c echo.Context) error {
-	db := c.Get("locator").(*ServiceLocator).GetDb()
-	cleaningTask := CleaningTask{}
-	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
-	}
+func getCleaningTaskById(serviceLocator *ServiceLocator) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbInstance, _, err := serviceLocator.GetWithType("db")
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		db, ok := dbInstance.(*gorm.DB)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		id := c.Param("id")
+		cleaningTask := CleaningTask{}
+		result := db.Model(CleaningTask{}).First(&cleaningTask, id)
+		if result.Error != nil {
+			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				return echo.NewHTTPError(http.StatusNotFound)
+			}
 
-	id, _ := strconv.Atoi(c.Param("id"))
-	result := db.First(&CleaningTask{}, id)
-	if result.RowsAffected == 0 {
-		return c.NoContent(http.StatusNotFound)
-	}
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
 
-	// save updated cleaning task in db
-	cleaningTask.ID = uint(id)
-	// TODO: include id in request
-	result = db.Save(&cleaningTask)
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		return c.JSON(http.StatusOK, cleaningTask)
 	}
-
-	return c.JSON(http.StatusOK, cleaningTask)
 }
 
-func deleteCleaningTaskById(c echo.Context) error {
-	db := c.Get("locator").(*ServiceLocator).GetDb()
-	id := c.Param("id")
-	result := db.Find(&CleaningTask{}, id)
-	if result.RowsAffected == 0 {
-		return c.NoContent(http.StatusNotFound)
-	}
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
+func updateCleaningTaskById(serviceLocator *ServiceLocator) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbInstance, _, err := serviceLocator.GetWithType("db")
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		db, ok := dbInstance.(*gorm.DB)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		cleaningTask := CleaningTask{}
+		err = json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-	result = db.Delete(&CleaningTask{}, id)
-	if result.Error != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
-	}
+		id, _ := strconv.Atoi(c.Param("id"))
+		result := db.First(&CleaningTask{}, id)
+		if result.RowsAffected == 0 {
+			return c.NoContent(http.StatusNotFound)
+		}
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
 
-	return c.NoContent(http.StatusNoContent)
+		// save updated cleaning task in db
+		cleaningTask.ID = uint(id)
+		// TODO: include id in request
+		result = db.Save(&cleaningTask)
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
+
+		return c.JSON(http.StatusOK, cleaningTask)
+	}
+}
+
+func deleteCleaningTaskById(serviceLocator *ServiceLocator) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbInstance, _, err := serviceLocator.GetWithType("db")
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		db, ok := dbInstance.(*gorm.DB)
+		if !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		id := c.Param("id")
+		result := db.Find(&CleaningTask{}, id)
+		if result.RowsAffected == 0 {
+			return c.NoContent(http.StatusNotFound)
+		}
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
+
+		result = db.Delete(&CleaningTask{}, id)
+		if result.Error != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, result.Error)
+		}
+
+		return c.NoContent(http.StatusNoContent)
+	}
 }
 
 func main() {
@@ -157,23 +189,21 @@ func main() {
 
 	e := echo.New()
 
-	locator := NewServiceLocator(db, e)
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			c.Set("locator", locator)
-			return next(c)
-		}
-	})
+	// Create a ServiceLocator instance
+	serviceLocator := NewServiceLocator()
+
+	// Register the CleaningTaskService with the service locator
+	serviceLocator.Register("db", db)
 
 	cleaningTasksPath := "/api/cleaning-tasks"
 
-	e.GET(cleaningTasksPath, getCleaningTasks)
-	e.POST(cleaningTasksPath, createCleaningTask)
+	e.GET(cleaningTasksPath, getCleaningTasks(serviceLocator))
+	e.POST(cleaningTasksPath, createCleaningTask(serviceLocator))
 	// I dislike here that the handler methods has no explicit knowledge about the path (:id)
 	// defining the path and handler together seems to be more explicit
-	e.GET(cleaningTasksPath+"/:id", getCleaningTaskById)
-	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById)
-	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById)
+	e.GET(cleaningTasksPath+"/:id", getCleaningTaskById(serviceLocator))
+	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById(serviceLocator))
+	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById(serviceLocator))
 
-	locator.echo.Logger.Fatal(e.Start(":1323"))
+	e.Logger.Fatal(e.Start(":1323"))
 }
