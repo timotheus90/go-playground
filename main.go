@@ -33,12 +33,22 @@ const (
 	CategoryOther   TaskCategory = "other"
 )
 
-var (
-	db  *gorm.DB
-	err error
-)
+type ServiceLocator struct {
+	db   *gorm.DB
+	echo *echo.Echo
+}
+
+// similar to dependency container this holds references to dependencies and services of the app
+func NewServiceLocator(db *gorm.DB, echo *echo.Echo) *ServiceLocator {
+	return &ServiceLocator{db: db, echo: echo}
+}
+
+func (locator *ServiceLocator) GetDb() *gorm.DB {
+	return locator.db
+}
 
 func getCleaningTasks(c echo.Context) error {
+	db := c.Get("locator").(*ServiceLocator).GetDb()
 	cleaningTasks := []CleaningTask{{}}
 	result := db.Model(&CleaningTask{}).Find(&cleaningTasks)
 	if result.Error != nil {
@@ -48,6 +58,7 @@ func getCleaningTasks(c echo.Context) error {
 }
 
 func createCleaningTask(c echo.Context) error {
+	db := c.Get("locator").(*ServiceLocator).GetDb()
 	cleaningTask := CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
@@ -65,6 +76,7 @@ func createCleaningTask(c echo.Context) error {
 }
 
 func getCleaningTaskById(c echo.Context) error {
+	db := c.Get("locator").(*ServiceLocator).GetDb()
 	id := c.Param("id")
 	cleaningTask := CleaningTask{}
 	result := db.Model(CleaningTask{}).First(&cleaningTask, id)
@@ -80,6 +92,7 @@ func getCleaningTaskById(c echo.Context) error {
 }
 
 func updateCleaningTaskById(c echo.Context) error {
+	db := c.Get("locator").(*ServiceLocator).GetDb()
 	cleaningTask := CleaningTask{}
 	err := json.NewDecoder(c.Request().Body).Decode(&cleaningTask)
 	if err != nil {
@@ -107,6 +120,7 @@ func updateCleaningTaskById(c echo.Context) error {
 }
 
 func deleteCleaningTaskById(c echo.Context) error {
+	db := c.Get("locator").(*ServiceLocator).GetDb()
 	id := c.Param("id")
 	result := db.Find(&CleaningTask{}, id)
 	if result.RowsAffected == 0 {
@@ -127,7 +141,7 @@ func deleteCleaningTaskById(c echo.Context) error {
 func main() {
 	// init database
 	dataSourceName := "host=localhost user=postgres password=postgres port=5432 sslmode=disable"
-	db, err = gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(dataSourceName), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 		Logger:                                   logger.Default.LogMode(logger.Info),
 	})
@@ -143,6 +157,14 @@ func main() {
 
 	e := echo.New()
 
+	locator := NewServiceLocator(db, e)
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("locator", locator)
+			return next(c)
+		}
+	})
+
 	cleaningTasksPath := "/api/cleaning-tasks"
 
 	e.GET(cleaningTasksPath, getCleaningTasks)
@@ -153,5 +175,5 @@ func main() {
 	e.PUT(cleaningTasksPath+"/:id", updateCleaningTaskById)
 	e.DELETE(cleaningTasksPath+"/:id", deleteCleaningTaskById)
 
-	e.Logger.Fatal(e.Start(":1323"))
+	locator.echo.Logger.Fatal(e.Start(":1323"))
 }
